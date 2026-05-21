@@ -1,0 +1,396 @@
+# oop + sql
+# bank application with oop and sql
+# account table - id, fullname, email, password, account_no, balance
+
+
+import mysql.connector as sql
+from random import randint
+from pwinput import pwinput
+import bcrypt
+# balance = 0
+
+class config:
+    __conn = None
+
+    def __init__(self):
+        self.__conn = sql.connect(
+            host = "127.0.0.1",
+            user = "root",
+            password = "",
+            port = 3307,
+            database = "mar2026"
+        )
+        self.__conn.autocommit = True
+        self.mycursor = self.__conn.cursor()
+
+    def register(self, fullname, email, password):
+        if fullname == "" or email == "" or password == "":
+            return "All fields are required. Try again."
+        
+        # hashing the password
+        hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+        account_no = randint(2000000000, 2999999999)
+        query = "INSERT INTO user_table(fullname, email, password, account_no) VALUES(%s, %s, %s, %s)" 
+        values = (fullname, email, hashed, account_no)
+        self.mycursor.execute(query, values)
+        return "Registration successful"
+    
+    def set_password(self):
+        password1 = pwinput(prompt="Enter password: ")
+        password2 = pwinput(prompt="Confirm password: ")
+        if password1 != password2:
+            print("\nPasswords does not match\n")
+            return self.set_password()
+        return password1
+    
+    # validate_email(email);
+    # validate_password();
+    # validate_fullname();
+
+def validate_email(email):
+    if email == "":
+        print("Email cannot be empty.")
+        return False
+    if "@" not in email:
+        print ("Invalid email format. Email must contain '@'.")
+        return False
+    parts = email.split("@")
+    if len(parts) != 2:
+        print ("Invalid email format. Email must contain '@' and domain(@gmail.com).")
+        return False
+    
+    domain = parts[1]
+    if "." not in domain:
+        print("Invalid email format.")
+        return False
+    return True
+
+def validate_password(password):
+    if password == "":
+        print("Password cannot be empty")
+        return False
+    if len(password) < 8:
+        print("Password must be at least 8 characters long.")
+        return False
+    return True
+
+def validate_fullname(fullname):
+    if fullname == "":
+        print("Full name cannot be empty.")
+        return False
+    parts = fullname.split()
+    if len(parts) < 2:
+        print("Full name must contain both first and last name.")
+        return False
+    firstname = parts[0]
+    lastname = parts[1]
+    if not firstname:
+        print("First name is required.")
+        return False
+    if not lastname:
+        print("Last name is required.")
+        return False
+    return True
+
+class BankApp(config):
+
+    def menu(self):
+        print("""
+            1. Sign In
+            2. Sign Up
+            3. Exit
+        """)
+        choice = input("Enter your choice: ")
+        if choice == "1":
+            self.sign_in()
+        elif choice == "2":
+            self.sign_up()
+        elif choice == "3":
+            print("Thank you for using our bank app. Goodbye!")
+            exit()
+        else:
+            print("Invalid choice. Try again.")
+            self.menu()
+    
+    def sign_up(self):
+        try:
+            while True:
+                firstname = input("Enter your first name: ").strip().title()
+                if firstname:
+                    break
+            while True:
+                lastname = input("Enter your last name: ").strip().title()
+                if lastname:
+                    break
+                other_names = input("Enter your other name (optional): ").strip().title()
+                fullname = f"{firstname} {lastname} {other_names}".strip()
+            while True:
+                email = input("Enter your email: ").strip().lower()
+
+                if validate_email(email):
+                    break
+                # else:
+                #     print("Email is invalid. Please try again.")
+
+            while True:
+                password = self.set_password()
+
+                if validate_password(password):
+                    break
+                # else: 
+                #     print("Password is invalid. Please try again.")
+
+                
+            response = self.register(fullname, email, password)
+            print(response)
+            
+        except ValueError as ve:
+            print(f"{ve} Invalid input. Please try again.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        
+        self.menu()
+        
+    
+    def sign_in(self):
+        try:
+            email = input("Enter your email: ").strip().lower()
+            query = "SELECT email, password, account_no FROM user_table WHERE email = %s"
+            values = (email,)
+            self.mycursor.execute(query, values)
+            result = self.mycursor.fetchone()
+
+            if result is None:
+                print("Email or password not found. Try again.")
+                return self.sign_in()
+            
+            stored_password = result[1]
+            account_no = result[2]
+
+            for p in range(3):
+                password = pwinput(prompt="Enter your password: ")
+
+                if bcrypt.checkpw(password.encode(), stored_password.encode()):
+                    
+                    print("Login successful ✅") 
+                    home = Home(stored_password, account_no)
+                    return home.homepage()
+
+                else:
+                    print(f"Invalid password. You have {2 - p} attempts left.")
+
+            print("Too many failed attempts. Returning to main menu.")
+            self.menu()
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+            self.menu()
+
+
+class Home(config):
+    def __init__(self, stored_password, account_no):
+        super().__init__()
+        self.stored_password = stored_password
+        self.account_no = account_no
+
+    def homepage(self):
+        print("""
+            1. Check Balance
+            2. Withdraw
+            3. Deposit
+            4. Transfer
+            5. Change Password
+            6. View Transaction History
+            7. Logout
+        """)
+        choice = input("Enter your choice: ")
+        if choice == "1":
+            self.check_balance()
+        elif choice == "2":
+            self.withdraw()
+        elif choice == "3":
+            self.deposit()
+        elif choice == "4":
+            self.transfer()
+        elif choice == "5":
+            self.change_password()
+        elif choice == "6":
+            self.view_transaction_history()
+        elif choice == "7":
+            self.logout()
+
+    def check_balance(self):
+        try:
+            query = "SELECT Account_balance FROM user_table WHERE account_no = %s"
+            values = (self.account_no,)
+            self.mycursor.execute(query, values)
+            result = self.mycursor.fetchone()
+
+            if result is None:
+                print("Account not found. Returning to homepage.")
+                return 
+            
+            print(f"Your balance is: {result[0]}")
+        except ValueError as m:
+            print(f"An error occurred while checking balance: {m}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        return self.homepage()
+                
+        
+
+    def withdraw(self):
+        try:
+            amount = float(input("Enter amount to withdraw: "))
+
+            if amount <= 0:
+                print("Amount must be greater than zero. Try again.")
+                return self.withdraw()
+
+            query = "SELECT Account_balance FROM user_table WHERE account_no = %s"
+            values = (self.account_no,)
+            self.mycursor.execute(query, values)
+            result = self.mycursor.fetchone()
+            balance = result[0] if result else 0
+
+            if amount > balance:
+                print("Insufficient balance ❌. Try again.")
+                return self.withdraw()
+            else:
+                query = "UPDATE user_table SET Account_balance = Account_balance - %s WHERE account_no = %s"
+                self.mycursor.execute(
+                "INSERT INTO transactions(account_no, type, amount) VALUES(%s, %s, %s)",
+                (self.account_no, "WITHDRAWAL", amount)
+            )
+                values = (amount, self.account_no)
+                self.mycursor.execute(query, values)
+                print(f"You have withdrawn {amount:,.2f}.")
+            self.homepage()
+        except ValueError:
+            print("Invalid input. Please enter numbers only.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        return self.withdraw()
+
+    def deposit(self):
+        try:
+            amount = float(input("Enter amount to deposit: "))
+
+            if amount <= 0:
+                print("Amount must be greater than zero. Try again.")
+                return self.deposit()
+
+            query = "UPDATE user_table SET Account_balance = Account_balance + %s WHERE account_no = %s"
+            values = (amount, self.account_no)
+            self.mycursor.execute(query, values)
+                
+            self.mycursor.execute(
+                "SELECT Account_balance FROM user_table WHERE account_no = %s",
+                (self.account_no,)
+            )
+            new_balance = self.mycursor.fetchone()[0]
+            self.mycursor.execute(
+                "INSERT INTO transactions(account_no, type, amount) VALUES(%s, %s, %s)",
+                (self.account_no, "DEPOSIT", amount)
+            )
+
+            print(f"You have deposited {amount:,.2f}. Your new balance is {new_balance:,.2f}")
+        except ValueError:
+            print("Invalid input. Please enter numbers only.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        return self.homepage()
+
+            
+    def transfer(self):
+        try:
+            recipient_account_no = input("Enter recipient's account number: ")
+            amount = float(input("Enter amount to transfer: "))
+            if amount <= 0:
+                print("Amount must be greater than zero. Try again.")
+                return self.transfer()
+
+            query = "SELECT Account_balance FROM user_table WHERE account_no = %s"
+            values = (self.account_no,)
+            self.mycursor.execute(query, values)
+            sender_balance = self.mycursor.fetchone()[0]
+
+            if amount > sender_balance:
+                print("Insufficient balance ❌. Try again.")
+                return self.homepage()
+            
+            query = "SELECT account_no FROM user_table WHERE account_no = %s"
+            values = (recipient_account_no,)
+            self.mycursor.execute(query, values)
+            recipient_exists = self.mycursor.fetchone()
+            if recipient_exists is None:
+                print("Recipient account number not found. Try again.")
+                return self.homepage()
+            
+            query = "UPDATE user_table SET Account_balance = Account_balance - %s WHERE account_no = %s"
+            values = (amount, self.account_no)
+            self.mycursor.execute(query, values)
+
+            query = "UPDATE user_table SET Account_balance = Account_balance + %s WHERE account_no = %s"
+            values = (amount, recipient_account_no)
+            self.mycursor.execute(query, values)
+
+            self.mycursor.execute(
+                "INSERT INTO transactions(account_no, type, amount) VALUES(%s, %s, %s)", 
+                (self.account_no, "TRANSFER OUT", amount)
+            )
+            self.mycursor.execute(
+                "INSERT INTO transactions(account_no, type, amount) VALUES(%s, %s, %s)",
+                (recipient_account_no, "TRANSFER IN", amount)
+            )
+
+            print(f"You have transferred {amount:,.2f} to account number {recipient_account_no}.")
+        except ValueError:
+            print("Invalid input. Please enter numbers only.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        self.homepage()
+
+    def change_password(self):
+        try:
+
+            current_password = input("Enter your current password: ")
+            
+            if not bcrypt.checkpw(current_password.encode(), self.stored_password.encode()):
+                print("Incorrect current password. Try again.")
+                return self.change_password()
+            new_password = input("Enter your new password: ")
+            confirm_password = input("Confirm your new password: ")
+            if new_password != confirm_password:
+                print("New passwords do not match. Try again.")
+                return self.change_password()
+            hashed_new_password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+            query = "UPDATE user_table SET password = %s WHERE account_no = %s"
+            values = (hashed_new_password, self.account_no)
+            self.mycursor.execute(query, values)
+            print("Password changed successfully.")
+
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+        self.homepage()
+
+    def view_transaction_history(self):
+        query = "SELECT type, amount, created_at FROM transactions WHERE account_no = %s ORDER BY created_at DESC"
+        values = (self.account_no,)
+        self.mycursor.execute(query, values)
+        transactions = self.mycursor.fetchall()
+
+        print("\n---- Transaction History: ----")
+        for transaction in transactions:
+            t_type, amount, created_at = transaction
+            print(f"{created_at} | {t_type.upper()} | ₦{amount}")
+        self.homepage()
+
+    def logout(self):
+        print("You have been logged out. Goodbye!")
+        bank_app = BankApp()
+        bank_app.menu()
+
+bk = BankApp()
+bk.menu()  
+
